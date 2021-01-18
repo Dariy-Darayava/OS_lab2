@@ -267,19 +267,23 @@ int handle_received_msg(char *msg, struct sockaddr_in *client_addr){
     if (strncmp(msg, "GET", 3) == 0){
         return create_task(GET, *client_addr);
     }else{
-        char *ptr;
+        char *ptr; char endcheck;
+        char *tmpmsg;
         double number;
         
-        if (!(ptr = strtok(msg, " ")))
+        if (!(tmpmsg = strdup(msg)))
             return 2;
+        
+        
+        if (!(ptr = strtok(tmpmsg, " ")))
+            {free(tmpmsg); return 3;}
         if (strncmp(ptr, "ADD", 3) != 0)
-            return 3;
+            {free(tmpmsg); return 4;}
         if (!(ptr = strtok(NULL, " ")))
-            return 4;
-        if (sscanf(ptr, "%lf", &number) != 1)
-            return 5;
-        if (ptr = strtok(NULL, " "))
-            return 6;
+            {free(tmpmsg); return 5;}
+        if (sscanf(ptr, "%lf%c", &number, &endcheck) != 1)
+            {free(tmpmsg); return 6;}
+        free(tmpmsg);                    
         return create_task(ADD, *client_addr, number);
         
     }
@@ -372,6 +376,7 @@ int main(int argc, char *argv[])
     curr_time -= start_time;
     struct tm c_time = *localtime(&curr_time);
     printf("%02d:%02d:%02d\n", c_time.tm_hour, c_time.tm_min, c_time.tm_sec);*/
+    
     
     
     int rez;//test various func returns
