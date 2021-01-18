@@ -11,6 +11,7 @@
 #include <stdarg.h>
 #include <time.h>
 #include <signal.h>
+#include <poll.h>
 
 //define consts
 
@@ -217,7 +218,7 @@ int setup(int argc, char *argv[])//option parcing and env vars fetching
     return 0;
 }
 
-int lprintf(char *msg, int vnum, ...)
+int lprintf(char *msg, ...)
 {
     char *msgwt;// message + time
     if (!(msgwt = malloc(22 + strlen(msg) + 1)))
@@ -232,7 +233,7 @@ int lprintf(char *msg, int vnum, ...)
     strcat(msgwt, msg);
     
     va_list vlist;
-    va_start(vlist, vnum);
+    va_start(vlist, msg);
     //write to log
     int rez = vfprintf(logfd, msgwt, vlist);
     va_end(vlist);
@@ -243,7 +244,7 @@ int lprintf(char *msg, int vnum, ...)
 int configure_socket(int *fd)
 {
     struct sockaddr_in addr = {0};
-    if (!(*fd = socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK, 0)))
+    if (!(*fd = socket(AF_INET, SOCK_DGRAM /*| SOCK_NONBLOCK*/, 0)))
         return 1;
     
     addr.sin_family = AF_INET;
@@ -387,24 +388,52 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
     if (rez = configure_socket(&server_socket)){
-        lprintf("Unable to configure socket(%d)\n", 1, rez);
+        lprintf("Unable to configure socket(%d)\n", rez);
         exit(EXIT_FAILURE);
     }
     
     if (rez = setup_signal_handlers()){
-        lprintf("Unable to setup signal handlers(%d)\n", 1, rez);
+        lprintf("Unable to setup signal handlers(%d)\n", rez);
         exit(EXIT_FAILURE);
     }        
     
-    //printf("%d\n", lprintf("Msg was handled %d.\n", 1, 10));
+    int recvmsglen;
+    char recvmsg[MAX_MSG_LEN+1];
+    struct sockaddr_in curr_client_addr = {0};
+    int curr_client_addr_size = sizeof(curr_client_addr);
+    
+    struct pollfd poll_scope[1];
+    poll_scope[0].fd = server_socket;
+    poll_scope[0].events = POLLIN;
     
     while(1){
-        int recvmsglen;
-        char recvmsg[MAX_MSG_LEN] = {0};
-        struct sockaddr_in curr_client_addr = {0};
-        int curr_client_addr_size = sizeof(curr_client_addr);
-            
-        recvmsglen = recvfrom(server_socket, recvmsg, sizeof(recvmsg), 0, (struct sockaddr*)&curr_client_addr, &curr_client_addr_size);
+        rez = poll(poll_scope, 1, 100);
+        
+        if (rez == -1)
+            lprintf("Poll error(%d):%s\n", errno, strerror(errno));
+        else if (rez > 0){
+            //if sock is ready
+            if (poll_scope[0].revents & POLLIN){
+                poll_scope[0].revents = 0;
+                
+                memset(recvmsg, 0, MAX_MSG_LEN+1);
+                memset(&curr_client_addr, 0, curr_client_addr_size);
+                
+                recvmsglen = recvfrom(server_socket, recvmsg, sizeof(recvmsg), 0, (struct sockaddr*)&curr_client_addr, &curr_client_addr_size);
+
+                if (recvmsglen > 0){
+                    rez = handle_received_msg(recvmsg, &curr_client_addr);
+                    if (rez){
+                        lprintf("Msg {%s} was not handled. Error code(%d)\n", recvmsg, rez);
+                    }else{
+                        lprintf("Msg {%s} was handled.\n", recvmsg);
+                    }
+                        
+                }
+                
+            }
+        }
+        /*recvmsglen = recvfrom(server_socket, recvmsg, sizeof(recvmsg), 0, (struct sockaddr*)&curr_client_addr, &curr_client_addr_size);
 
         if (recvmsglen > 0){
             rez = handle_received_msg(recvmsg, &curr_client_addr);
@@ -414,13 +443,12 @@ int main(int argc, char *argv[])
                 lprintf("Msg {%s} was handled.\n", 1, recvmsg);
             }
                 
-        }
+        }*/
             
                 
         
         if (signal_flags)// signal_flags != 0 if at least one flag is 1
             handle_signals();
-            
     }
     
     
