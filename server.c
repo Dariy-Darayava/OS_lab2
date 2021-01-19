@@ -12,9 +12,13 @@
 #include <time.h>
 #include <signal.h>
 #include <poll.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <semaphore.h>
 
 //define consts
-
+#define MAX_MSG_LEN 80
 //define masks
 #define CONFIG_FLAG_w 0x1
 #define CONFIG_FLAG_d 0x2
@@ -34,7 +38,9 @@
 #define DEFAULT_PORT 8080
 //default addr -> INADDR_ANY
 
-#define MAX_MSG_LEN 80
+#define SHM_NAME "/l2shm"
+#define SEM_NAME "/l2sem"
+#define SHM_SIZE 1024
 
 
 /////////////////////////////////////////////////structs
@@ -64,10 +70,10 @@ typedef struct list{
 }list;
 
 
-typedef struct server_statistics{
+typedef struct server_shared_data{
     unsigned long seccess_query_count;
     unsigned long error_query_count;
-}server_statistics;
+}server_shared_data;
 
 /////////////////////////////////////////////////vars
 char verbose_mode = 0;//additional output
@@ -82,7 +88,10 @@ config conf =
     0//port
 };
 FILE *logfd;
-    
+int shmfd;
+struct server_shared_data *ssd;
+int semfd;
+sem_t *sem;
 /////////////////////////////////////////////////macro
 //this one for access conf.flags easily(conffX = config flag X)
 #define conff(X) (conf.flags & CONFIG_FLAG_##X)
@@ -97,8 +106,7 @@ FILE *logfd;
 #define rsigf(X) (signal_flags &= ~SIGNAL_FLAG_##X)
 
 /////////////////////////////////////////////////functions
-int setup(int argc, char *argv[])//option parcing and env vars fetching
-{
+int setup(int argc, char *argv[]){//option parcing and env vars fetching
     //option parcing
     while (1)
     {
@@ -218,8 +226,7 @@ int setup(int argc, char *argv[])//option parcing and env vars fetching
     return 0;
 }
 
-int lprintf(char *msg, ...)
-{
+int lprintf(char *msg, ...){
     char *msgwt;// message + time
     if (!(msgwt = malloc(22 + strlen(msg) + 1)))
         return -1;
@@ -241,8 +248,36 @@ int lprintf(char *msg, ...)
     return rez;
 }
 
-int configure_socket(int *fd)
-{
+int create_and_configure_storage(){
+    if ((shmfd = shm_open(SHM_NAME, O_RDWR | O_CREAT, S_IRWXU | S_IRWXG)) < 0)
+        return 1;
+    if (ftruncate(shmfd,SHM_SIZE))
+        return 2;
+    ssd = mmap(NULL, SHM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, shmfd, 0);
+    if (ssd == MAP_FAILED)
+        return 3;
+    
+    if ((semfd = shm_open(SEM_NAME, O_RDWR | O_CREAT, S_IRWXU | S_IRWXG)) < 0)
+        return 4;
+    if (ftruncate(semfd,sizeof(sem_t)))
+        return 5;
+    sem = mmap(NULL, sizeof(sem_t), PROT_READ | PROT_WRITE, MAP_SHARED, semfd, 0);
+    if (sem == MAP_FAILED)
+        return 6;
+    sem_init(sem, 1, 1);
+    
+    return 0;
+}
+
+int add_to_storage(double *num, struct sockaddr_in *client_addr){
+    return 0;
+}
+
+int get_from_storage(double *num, struct sockaddr_in *client_addr){
+    return 0;
+}
+
+int configure_socket(int *fd){
     struct sockaddr_in addr = {0};
     if (!(*fd = socket(AF_INET, SOCK_DGRAM /*| SOCK_NONBLOCK*/, 0)))
         return 1;
@@ -256,9 +291,38 @@ int configure_socket(int *fd)
     return 0;
 }
 
-int create_task(list_action act, struct sockaddr_in client_addr,...){
-    printf("Task %d created\n", act);
-    return 0;
+int create_task(list_action act, struct sockaddr_in client_addr, double num){
+    int pid = fork();
+    int rez;
+    if (pid < 0)
+        return pid;
+    if (pid > 0)
+        return 0;// exit create_task in child;
+   
+    if (conff(w))
+        sleep(conf.wait);
+    if (act == ADD){// add number
+        printf("ADDING %lf\n", num);
+        if (rez = add_to_storage(&num, &client_addr)){
+            //send OK
+            _Exit(EXIT_SUCCESS);
+        }
+        else{
+            //send error
+            _Exit(EXIT_FAILURE);
+        }
+    }else{// get number;
+        printf("GETTING\n");
+        if (rez = get_from_storage(&num, &client_addr)){
+            //send num
+            _Exit(EXIT_SUCCESS);
+        }
+        else{
+            //send err lprintf("Child at work\n");or
+            _Exit(EXIT_FAILURE);
+        }
+    }
+    
 }
 
 int handle_received_msg(char *msg, struct sockaddr_in *client_addr){
@@ -266,7 +330,8 @@ int handle_received_msg(char *msg, struct sockaddr_in *client_addr){
     //ADD [num]
     //GET
     if (strncmp(msg, "GET", 3) == 0){
-        return create_task(GET, *client_addr);
+        create_task(GET, *client_addr, 0);
+        return 0;
     }else{
         char *ptr; char endcheck;
         char *tmpmsg;
@@ -285,7 +350,8 @@ int handle_received_msg(char *msg, struct sockaddr_in *client_addr){
         if (sscanf(ptr, "%lf%c", &number, &endcheck) != 1)
             {free(tmpmsg); return 6;}
         free(tmpmsg);                    
-        return create_task(ADD, *client_addr, number);
+        create_task(ADD, *client_addr, number);
+        return 0;
         
     }
         
@@ -339,8 +405,7 @@ int setup_signal_handlers(){
     return 0;
 }
 
-int handle_signals()
-{
+int handle_signals(){
     if (sigf(INT)){
         rsigf(INT);
         exit(EXIT_SUCCESS);
@@ -359,8 +424,7 @@ int handle_signals()
     return 0;
 }
 
-int cleanup()
-{
+int cleanup(){
     if(conf.log != NULL)
         free(conf.log);
     if(conf.address != NULL)
@@ -387,6 +451,12 @@ int main(int argc, char *argv[])
         printf("Setup error(%d)\n",rez);
         exit(EXIT_FAILURE);
     }
+    
+    if (rez = create_and_configure_storage()){
+        lprintf("Storage setup error(%d):%s\n",rez, strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+    
     if (rez = configure_socket(&server_socket)){
         lprintf("Unable to configure socket(%d)\n", rez);
         exit(EXIT_FAILURE);
