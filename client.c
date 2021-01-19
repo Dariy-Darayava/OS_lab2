@@ -1,52 +1,175 @@
-#include <sys/types.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <getopt.h>
+#include <errno.h>
+#include <unistd.h>
+#include <string.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <unistd.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
+#include <errno.h>
+#include <stdarg.h>
+#include <time.h>
+#include <signal.h>
+#include <poll.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <semaphore.h>
 
-#define CHECK_RESULT(res, msg) \
-do { \
-if (res < 0) { \
-perror(msg); \
-exit(EXIT_FAILURE); \
-} \
-} while (0)
+//define consts
+#define MAX_MSG_LEN 80
+#define DEFAULT_PORT 8080
+#define DEFAULT_ADDRESS "127.0.0.1"
+//define masks
+#define CONFIG_FLAG_a 0x1
+#define CONFIG_FLAG_p 0x2
+#define CONFIG_FLAG_v 0x4
+#define CONFIG_FLAG_V 0x8
+#define CONFIG_FLAG_h 0x10
 
-#define BUF_SIZE 1024
+//structs
+/////////////////////////////////////////////////structs
+typedef struct
+{
+    unsigned long flags; //...000hVvpa
+    char *address;//server address
+    unsigned short port;//server port. Duh
+}config;
 
-int main() {
-int clientSocket;
-char buffer[BUF_SIZE] = {0};
-struct sockaddr_in serverAddr = {0};
-socklen_t addr_size;
+//vars
+config conf = 
+{
+    0,//flags
+    NULL,//address
+    0//port
+};
 
-clientSocket = socket(AF_INET, SOCK_DGRAM, 0);
-CHECK_RESULT(clientSocket, "socket");
+/////////////////////////////////////////////////macro
+//this one for access conf.flags easily(conffX = config flag X)
+#define conff(X) (conf.flags & CONFIG_FLAG_##X)
+//this one for setting flags easily(sconffX = set config flag X)
+#define sconff(X) (conf.flags |= CONFIG_FLAG_##X)
 
-serverAddr.sin_family = AF_INET;
-serverAddr.sin_port = htons(5555);
-serverAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
+//functions
+int setup(int argc, char *argv[]){//option parcing and env vars fetching
+    //option parcing
+    while (1)
+    {
+        
+        int c = -1;//for getopt
+        c = getopt(argc, argv, "-a:p:vVh");//read options
+        if (c == -1)//if -1 we reached end of argv
+            break;
+        switch(c)
+        {
+            case 'a':
+                if (conff(a)) 
+                    return 1;
+                sconff(a);
+                conf.address = strdup(optarg);//copy address
+                if (conf.address == NULL)
+                    return 2;
+                break;
+            case 'p':
+                if (conff(p))
+                    return 3;
+                sconff(p);
+                if (sscanf(optarg, "%u", &conf.port) != 1)
+                    return 4;
+                break;
+            case 'v':
+                if (conff(v)) 
+                    return 5;
+                sconff(v);
+                break;
+            case 'V':
+                if (conff(V)) 
+                    return 6;
+                sconff(V);
+                break;
+            case 'h':
+                if (conff(h)) 
+                    return 7;
+                sconff(h);
+                break;
+            case '?':
+                return 8;
+                break;
+            case ':':
+                return 9;
+                break;
+            default:
+                return 10;
+                break;
 
-printf("Data sent: ");
-fgets(buffer, sizeof(buffer), stdin);
-char *pos = strchr(buffer, '\n');
-if (pos) *pos = '\0';
+        }
+    }
+    //argv is now parced. Now we should check for any env vars
+    char *env;
+    if (!conff(a)){//-l not set -> check env vars
+        env = getenv("L2ADDR");
+        if (env){
+            if (!(conf.address = strdup(env)))
+                return 11;
+        }
+    }
+    if (!conff(p)){//if -w was not set -> check env var
+        env = getenv("L2PORT");
+        if (env){
+            if(sscanf(env,"%u", &conf.port) != 1)
+                return 12;
+        }
+            
+    }
+    
 
-int res = sendto(clientSocket, buffer, strlen(buffer), 0,
-(const struct sockaddr*)&serverAddr, sizeof(serverAddr));
-CHECK_RESULT(res, "sendto");
+    return 0;
+}
 
-memset(buffer, 0, sizeof(buffer));
 
-/*res = recvfrom(clientSocket, buffer, sizeof(buffer), 0, NULL, NULL);
-CHECK_RESULT(res, "recvfrom");
 
-printf("Data received (%d bytes): [%s]\n", (int)res, buffer);*/
-
-close(clientSocket);
-
-return 0;
+int main(int argc, char *argv[])
+{    
+    
+    int rez;//test various func returns
+    int client_socket;
+    struct sockaddr_in server_addr = {0};
+    
+    char msg[MAX_MSG_LEN+1];
+    //setup
+    if (rez = setup(argc, argv)){
+        printf("Setup error(%d)\n",rez);
+        exit(EXIT_FAILURE);
+    }
+    
+    
+    if (!(client_socket = socket(AF_INET, SOCK_DGRAM /*| SOCK_NONBLOCK*/, 0))){
+        printf("Socket setup error\n");
+        exit(EXIT_FAILURE);
+    }
+    
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = (conff(p))? htons(conf.port) : DEFAULT_PORT;
+    if ((server_addr.sin_addr.s_addr = (conff(a))? inet_addr(conf.address): inet_addr(DEFAULT_ADDRESS)) == INADDR_NONE){
+        printf("Unable to set setver addr\n");
+        exit(EXIT_FAILURE);
+    }
+    
+    printf("Data sent:\n");
+    fgets(msg, sizeof(msg), stdin);
+    char *pos = strchr(msg, '\n');
+    if (pos) *pos = '\0';
+    rez = sendto(client_socket, msg, strlen(msg), 0, (struct sockaddr*)&server_addr, sizeof(server_addr));
+    if (rez < 0){ printf("Sendto error\n"); exit(EXIT_FAILURE);}
+    
+    memset(msg, 0, sizeof(msg));
+    rez = recvfrom(client_socket, msg, sizeof(msg), 0, NULL, NULL);
+    if (rez < 0){ printf("Recvfrom error\n"); exit(EXIT_FAILURE);}
+    
+    printf("Server response:\n%s\n", msg);
+    
+    close(client_socket);
+    
+    return 0;
 }

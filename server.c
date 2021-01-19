@@ -76,6 +76,7 @@ typedef struct server_shared_data{
 }server_shared_data;
 
 /////////////////////////////////////////////////vars
+int server_socket;
 char verbose_mode = 0;//additional output
 char signal_flags = 0;
 
@@ -248,6 +249,7 @@ int lprintf(char *msg, ...){
     return rez;
 }
 
+
 int create_and_configure_storage(){
     if ((shmfd = shm_open(SHM_NAME, O_RDWR | O_CREAT, S_IRWXU | S_IRWXG)) < 0)
         return 1;
@@ -277,17 +279,21 @@ int get_from_storage(double *num, struct sockaddr_in *client_addr){
     return 0;
 }
 
-int configure_socket(int *fd){
+int configure_socket(){
     struct sockaddr_in addr = {0};
-    if (!(*fd = socket(AF_INET, SOCK_DGRAM /*| SOCK_NONBLOCK*/, 0)))
+    if (!(server_socket = socket(AF_INET, SOCK_DGRAM /*| SOCK_NONBLOCK*/, 0)))
         return 1;
+    
+    if (setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int)) < 0)
+        return 2;
+        
     
     addr.sin_family = AF_INET;
     addr.sin_port = (conff(p))? htons(conf.port) : DEFAULT_PORT;
     addr.sin_addr.s_addr = (conff(a))? inet_addr(conf.address): INADDR_ANY; 
         
-    if (bind(*fd, (struct sockaddr *)&addr, sizeof(addr)) != 0)
-        return 2;
+    if (bind(server_socket, (struct sockaddr *)&addr, sizeof(addr)) != 0)
+        return 3;
     return 0;
 }
 
@@ -299,27 +305,54 @@ int create_task(list_action act, struct sockaddr_in client_addr, double num){
     if (pid > 0)
         return 0;// exit create_task in child;
    
+    
+    
+    //sendto(server_socket, "GOT", strlen("GOT"),0, (struct sockaddr*)&client_addr, sizeof(client_addr));
+    
+    
+    
+    
     if (conff(w))
         sleep(conf.wait);
-    if (act == ADD){// add number
-        printf("ADDING %lf\n", num);
+    if (act == ADD){
+/////////////// add number
         if (rez = add_to_storage(&num, &client_addr)){
-            //send OK
-            _Exit(EXIT_SUCCESS);
-        }
-        else{
-            //send error
+            //error uccured
+            lprintf("Child failed to add a number to storage(%d)\n", rez);
+            
+            rez = sendto(server_socket, "ERROR 1", strlen("ERROR 1"),0, (struct sockaddr*)&client_addr, sizeof(client_addr));
+            
+            if (rez < 0)
+                lprintf("Child failed to respond\n");
             _Exit(EXIT_FAILURE);
         }
-    }else{// get number;
-        printf("GETTING\n");
-        if (rez = get_from_storage(&num, &client_addr)){
+        else{
+            //Send OK
+            rez = sendto(server_socket, "OK", strlen("OK"),0, (struct sockaddr*)&client_addr, sizeof(client_addr));
+            
+            if (rez < 0)
+                lprintf("Child failed to respond\n");
+            _Exit(EXIT_SUCCESS);
+        }
+    }else{
+/////////////// get number;
+        if (get_from_storage(&num, &client_addr)){
+            //error
+            lprintf("Child failed to add a number to storage(%d)\n", rez);
+            
+            rez = sendto(server_socket, "ERROR 2", strlen("ERROR 2"),0, (struct sockaddr*)&client_addr, sizeof(client_addr));
+            
+            if (rez < 0)
+                lprintf("Child failed to respond\n");
+            _Exit(EXIT_FAILURE);
+        }
+        else{
             //send num
+            rez = sendto(server_socket, "42", strlen("42"),0, (struct sockaddr*)&client_addr, sizeof(client_addr));
+            
+            if (rez < 0)
+                lprintf("Child failed to respond\n");
             _Exit(EXIT_SUCCESS);
-        }
-        else{
-            //send err lprintf("Child at work\n");or
-            _Exit(EXIT_FAILURE);
         }
     }
     
@@ -443,7 +476,7 @@ int main(int argc, char *argv[])
     
     
     int rez;//test various func returns
-    int server_socket;
+    
     //setup
     if (rez = setup(argc, argv)){
         printf("Setup error(%d)\n",rez);
@@ -455,7 +488,7 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
     
-    if (rez = configure_socket(&server_socket)){
+    if (rez = configure_socket()){
         lprintf("Unable to configure socket(%d)\n", rez);
         exit(EXIT_FAILURE);
     }
@@ -493,6 +526,7 @@ int main(int argc, char *argv[])
                     rez = handle_received_msg(recvmsg, &curr_client_addr);
                     if (rez){
                         lprintf("Msg {%s} was not handled. Error code(%d)\n", recvmsg, rez);
+                        sendto(server_socket, "ERROR 1", strlen("ERROR 1"),0, (struct sockaddr*)&curr_client_addr, curr_client_addr_size);        
                     }else{
                         lprintf("Msg {%s} was handled.\n", recvmsg);
                     }
@@ -501,17 +535,6 @@ int main(int argc, char *argv[])
                 
             }
         }
-        /*recvmsglen = recvfrom(server_socket, recvmsg, sizeof(recvmsg), 0, (struct sockaddr*)&curr_client_addr, &curr_client_addr_size);
-
-        if (recvmsglen > 0){
-            rez = handle_received_msg(recvmsg, &curr_client_addr);
-            if (rez){
-                lprintf("Msg {%s} was not handled. Error code(%d)\n", 2, recvmsg, rez);
-            }else{
-                lprintf("Msg {%s} was handled.\n", 1, recvmsg);
-            }
-                
-        }*/
             
                 
         
