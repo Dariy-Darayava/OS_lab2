@@ -330,28 +330,26 @@ int handle_received_msg(char *msg, struct sockaddr_in *client_addr){
     //ADD [num]
     //GET
     if (strncmp(msg, "GET", 3) == 0){
-        create_task(GET, *client_addr, 0);
-        return 0;
+        if (strlen(msg) != 3)
+            return 2;
+        return create_task(GET, *client_addr, 0);
     }else{
         char *ptr; char endcheck;
         char *tmpmsg;
         double number;
         
         if (!(tmpmsg = strdup(msg)))
-            return 2;
-        
-        
+            return 3;
         if (!(ptr = strtok(tmpmsg, " ")))
-            {free(tmpmsg); return 3;}
-        if (strncmp(ptr, "ADD", 3) != 0)
             {free(tmpmsg); return 4;}
-        if (!(ptr = strtok(NULL, " ")))
+        if (strncmp(ptr, "ADD", 3) != 0)
             {free(tmpmsg); return 5;}
-        if (sscanf(ptr, "%lf%c", &number, &endcheck) != 1)
+        if (!(ptr = strtok(NULL, " ")))
             {free(tmpmsg); return 6;}
+        if (sscanf(ptr, "%lf%c", &number, &endcheck) != 1)
+            {free(tmpmsg); return 7;}
         free(tmpmsg);                    
-        create_task(ADD, *client_addr, number);
-        return 0;
+        return create_task(ADD, *client_addr, number);
         
     }
         
