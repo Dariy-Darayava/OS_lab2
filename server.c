@@ -74,7 +74,7 @@ typedef struct server_shared_data{
 }server_shared_data;
 
 /////////////////////////////////////////////////vars
-const char version[] = "1.3.0";
+const char version[] = "1.3.1";
 
 
 int server_socket;
@@ -541,9 +541,9 @@ int create_task(list_action act, struct sockaddr_in client_addr, double num){
         }
     }else{
 /////////////// get number;
-        if (get_from_storage(&num, &client_addr)){
+        if (rez = get_from_storage(&num, &client_addr)){
             //error
-            lprintf("Child failed to add a number to storage(%d)\n", rez);
+            lprintf("Child failed to get a number from storage(%d)\n", rez);
             
             rez = sendto(server_socket, "ERROR 2", strlen("ERROR 2"),0, (struct sockaddr*)&client_addr, sizeof(client_addr));
             
