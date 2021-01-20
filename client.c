@@ -75,7 +75,7 @@ int setup(int argc, char *argv[]){//option parcing and env vars fetching
                 if (conff(p))
                     return 3;
                 sconff(p);
-                if (sscanf(optarg, "%u", &conf.port) != 1)
+                if (sscanf(optarg, "%hu", &conf.port) != 1)
                     return 4;
                 break;
             case 'v':
@@ -117,7 +117,7 @@ int setup(int argc, char *argv[]){//option parcing and env vars fetching
     if (!conff(p)){//if -w was not set -> check env var
         env = getenv("L2PORT");
         if (env){
-            if(sscanf(env,"%u", &conf.port) != 1)
+            if(sscanf(env,"%hu", &conf.port) != 1)
                 return 12;
         }
             
