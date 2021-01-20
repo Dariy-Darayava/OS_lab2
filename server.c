@@ -653,7 +653,10 @@ int main(int argc, char *argv[])
                     rez = handle_received_msg(recvmsg, &curr_client_addr);
                     if (rez){
                         lprintf("Msg {%s} was not handled. Error code(%d)\n", recvmsg, rez);
-                        sendto(server_socket, "ERROR 1", strlen("ERROR 1"),0, (struct sockaddr*)&curr_client_addr, curr_client_addr_size);        
+                        sendto(server_socket, "ERROR 1", strlen("ERROR 1"),0, (struct sockaddr*)&curr_client_addr, curr_client_addr_size);
+                        sem_wait(sem);
+                        ssd->error_query_count++;
+                        sem_post(sem);
                     }else{
                         lprintf("Msg {%s} was handled.\n", recvmsg);
                     }
