@@ -243,6 +243,7 @@ int lprintf(char *msg, ...){
     va_start(vlist, msg);
     //write to log
     int rez = vfprintf(logfd, msgwt, vlist);
+    fflush(logfd);
     va_end(vlist);
     free(msgwt);
     return rez;
