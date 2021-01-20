@@ -38,7 +38,7 @@ typedef struct
 }config;
 
 //vars
-char version[] = "1.2.0";
+char version[] = "1.3.0";
 config conf = 
 {
     0,//flags

@@ -45,6 +45,7 @@
 #define MAX_CLI_DATA MAX_CLI_ENUM_SIZE*MAX_CLI_NUM
 #define SHM_SIZE 1024
 
+#define PATH_MAX 120
 
 /////////////////////////////////////////////////structs
 typedef struct
@@ -73,7 +74,7 @@ typedef struct server_shared_data{
 }server_shared_data;
 
 /////////////////////////////////////////////////vars
-const char version[] = "1.2.0";
+const char version[] = "1.3.0";
 
 
 int server_socket;
@@ -228,6 +229,49 @@ int setup(int argc, char *argv[]){//option parcing and env vars fetching
     
     srand(time(NULL));
     return 0;
+}
+
+void daemonize(){
+    pid_t pid;
+
+    /* Fork off the parent process */
+    pid = fork();
+
+    /* An error occurred */
+    if (pid < 0)
+        exit(EXIT_FAILURE);
+
+    /* Success: Let the parent terminate */
+    if (pid > 0)
+        exit(EXIT_SUCCESS);
+
+    /* On success: The child process becomes session leader */
+    if (setsid() < 0)
+        exit(EXIT_FAILURE);
+
+    /* Fork off for the second time*/
+    pid = fork();
+
+    /* An error occurred */
+    if (pid < 0)
+        exit(EXIT_FAILURE);
+
+    /* Success: Let the parent terminate */
+    if (pid > 0)
+        exit(EXIT_SUCCESS);
+
+    /* Set new file permissions */
+    umask(0);
+    char cwd[PATH_MAX];
+    getcwd(cwd, PATH_MAX);
+    chdir(cwd);
+
+    /* Close all open file descriptors */    
+    for (int i = sysconf(_SC_OPEN_MAX); i>=0; i--)
+    {
+        if (i != fileno(logfd))
+            close (i);
+    }
 }
 
 int lprintf(char *msg, ...){
@@ -667,7 +711,9 @@ int main(int argc, char *argv[])
         exit(EXIT_SUCCESS);
     }
         
-    
+    if (conff(d)){
+        daemonize();
+    }
     
     if (rez = create_and_configure_storage()){
         lprintf("Storage setup error(%d):%s\n",rez, strerror(errno));
