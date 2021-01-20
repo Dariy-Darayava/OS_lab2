@@ -77,6 +77,7 @@ int server_socket;
 char verbose_mode = 0;//additional output
 char signal_flags = 0;
 
+time_t start_time;
 config conf = 
 {
     0,//flags
@@ -564,25 +565,6 @@ int setup_signal_handlers(){
     return 0;
 }
 
-int handle_signals(){
-    if (sigf(INT)){
-        rsigf(INT);
-        exit(EXIT_SUCCESS);
-    }
-    if (sigf(TERM)){
-        rsigf(TERM);
-    }
-    if (sigf(QUIT)){
-        rsigf(QUIT);
-    }
-    if (sigf(USR1)){
-        rsigf(USR1);
-    }
-    
-        
-    return 0;
-}
-
 int cleanup(){
     if(conf.log != NULL)
         free(conf.log);
@@ -591,15 +573,47 @@ int cleanup(){
     return 0;
 }
 
+int handle_signals(){
+    if (sigf(INT)){
+        rsigf(INT);
+        cleanup();
+        exit(EXIT_SUCCESS);
+    }
+    if (sigf(TERM)){
+        rsigf(TERM);
+        cleanup();
+        exit(EXIT_SUCCESS);
+    }
+    if (sigf(QUIT)){
+        rsigf(QUIT);
+        cleanup();
+        exit(EXIT_SUCCESS);
+    }
+    if (sigf(USR1)){
+        rsigf(USR1);
+        time_t work_time = time(NULL) - start_time;
+        struct tm work_time_tm = *localtime(&work_time);
+    
+        sem_wait(sem);
+        lprintf("Showing statistics:\nWorking for:[%02d.%02d.%d %02d:%02d:%02d]\nSuccess requests:%d\nError requests:%d\n", work_time_tm.tm_mday, work_time_tm.tm_mon + 1,  work_time_tm.tm_year, work_time_tm.tm_hour, work_time_tm.tm_min, work_time_tm.tm_sec, ssd->seccess_query_count, ssd->error_query_count);
+        
+        if (!(conff(d)))
+            fprintf(stderr, "Showing statistics:\nWorking for:[%02d.%02d.%d %02d:%02d:%02d]\nSuccess requests:%d\nError requests:%d\n", work_time_tm.tm_mday, work_time_tm.tm_mon + 1,  work_time_tm.tm_year, work_time_tm.tm_hour, work_time_tm.tm_min, work_time_tm.tm_sec, ssd->seccess_query_count, ssd->error_query_count);     
+        
+        sem_post(sem);
+    }
+    
+        
+    return 0;
+}
+
+
 //main. Duh
 int main(int argc, char *argv[])
 {    
-    /*time_t start_time = time(NULL);
-    sleep(2);
-    time_t curr_time = time(NULL);
-    curr_time -= start_time;
-    struct tm c_time = *localtime(&curr_time);
-    printf("%02d:%02d:%02d\n", c_time.tm_hour, c_time.tm_min, c_time.tm_sec);*/
+    start_time = time(NULL);
+    
+    //printf("%02d:%02d:%02d\n", c_time.tm_hour, c_time.tm_min, c_time.tm_sec);*/
     
     
     
