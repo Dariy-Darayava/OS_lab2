@@ -40,6 +40,9 @@
 
 #define SHM_NAME "/l2shm"
 #define SEM_NAME "/l2sem"
+#define MAX_CLI_NUM 10
+#define MAX_CLI_ENUM_SIZE 10
+#define MAX_CLI_DATA MAX_CLI_ENUM_SIZE*MAX_CLI_NUM
 #define SHM_SIZE 1024
 
 
@@ -58,21 +61,15 @@ typedef enum list_action{
     GET
 }list_action;
 
-typedef struct list_member{
-    double data;
-    struct list_member *next;
-}list_member;
-
-typedef struct list{
-    unsigned int count;
-    list_member *first;
-    list_member *last;
-}list;
-
 
 typedef struct server_shared_data{
     unsigned long seccess_query_count;
     unsigned long error_query_count;
+    int curr_number_of_clients;
+    in_addr_t clients[MAX_CLI_NUM];
+    unsigned int client_enum_size[MAX_CLI_NUM];
+    double data[MAX_CLI_DATA];
+    
 }server_shared_data;
 
 /////////////////////////////////////////////////vars
@@ -224,6 +221,8 @@ int setup(int argc, char *argv[]){//option parcing and env vars fetching
         if (!(logfd = fopen("/tmp/lab2.log", "w+")))//if logfd == null
             return 20;
     }
+    
+    srand(time(NULL));
     return 0;
 }
 
@@ -258,6 +257,8 @@ int create_and_configure_storage(){
     ssd = mmap(NULL, SHM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, shmfd, 0);
     if (ssd == MAP_FAILED)
         return 3;
+    memset(ssd,0, SHM_SIZE);
+    
     
     if ((semfd = shm_open(SEM_NAME, O_RDWR | O_CREAT, S_IRWXU | S_IRWXG)) < 0)
         return 4;
@@ -272,10 +273,135 @@ int create_and_configure_storage(){
 }
 
 int add_to_storage(double *num, struct sockaddr_in *client_addr){
-    return 0;
+    sem_wait(sem);
+    if (conff(s)){
+        //if we have individual enum for each client
+        int curr_client_index = -1;
+        for(int i = 0; i < MAX_CLI_NUM; i++)//find our client number
+            if (ssd->clients[i] == client_addr->sin_addr.s_addr){
+                curr_client_index = i;
+                break;
+            }
+        if (curr_client_index == -1){//if we work with this client first time
+            if (ssd->curr_number_of_clients == MAX_CLI_NUM){
+                //we have no space for new user;
+                ssd->error_query_count++;
+                sem_post(sem);
+                return 1;
+            }
+            ssd->clients[ssd->curr_number_of_clients] = client_addr->sin_addr.s_addr;
+            ssd->data[ssd->curr_number_of_clients*MAX_CLI_ENUM_SIZE] = *num;
+            ssd->client_enum_size[ssd->curr_number_of_clients] = 1;
+            ssd->seccess_query_count++;
+            sem_post(sem);
+            return 0;
+            
+        }else{
+            if (ssd->client_enum_size[curr_client_index] == MAX_CLI_ENUM_SIZE){
+                //this clients enum is full
+                ssd->error_query_count++;
+                sem_post(sem);
+                return 2;
+            }
+            ssd->data[curr_client_index*MAX_CLI_ENUM_SIZE + ssd->client_enum_size[curr_client_index]] = *num;
+            ssd->client_enum_size[curr_client_index]++;
+            ssd->seccess_query_count++;
+            sem_post(sem);
+            return 0;
+        }
+            
+            
+        
+    }else{
+        //if we have one storage for everyone;
+        if(ssd->client_enum_size[0] == MAX_CLI_DATA){
+            //we have no space for new data
+            ssd->error_query_count++;
+            sem_post(sem);
+            return 3;
+        }
+        ssd->data[ssd->client_enum_size[0]] = *num;
+        ssd->client_enum_size[0]++;
+        ssd->seccess_query_count++;
+        sem_post(sem);
+        return 0;
+    }
 }
 
 int get_from_storage(double *num, struct sockaddr_in *client_addr){
+    sem_wait(sem);
+    if (conff(s)){
+        //separate storage for everyone
+        int curr_client_index = -1;
+        for(int i = 0; i < MAX_CLI_NUM; i++)//find our client number
+            if (ssd->clients[i] == client_addr->sin_addr.s_addr){
+                curr_client_index = i;
+                break;
+            }
+        if (curr_client_index == -1){
+            //no data to get for this client
+            ssd->error_query_count++;
+            sem_post(sem);
+            return 1;
+        }
+        
+        if(ssd->client_enum_size[curr_client_index] == 0){
+            //no items for this client
+            ssd->error_query_count++;
+            sem_post(sem);
+            return 2;
+        }
+        
+        if (ssd->client_enum_size[curr_client_index] == 1){
+            //last item for this client
+            *num = ssd->data[curr_client_index*MAX_CLI_ENUM_SIZE];
+            ssd->data[curr_client_index*MAX_CLI_ENUM_SIZE] = 0;
+            ssd->client_enum_size[curr_client_index] = 0;
+            ssd->seccess_query_count++;
+            sem_post(sem);
+            return 0;
+        }else{
+            //not the last item
+            int removed_num_index = rand() % ssd->client_enum_size[curr_client_index];
+            *num = ssd->data[curr_client_index*MAX_CLI_ENUM_SIZE + removed_num_index];
+            //shift for 1 double
+            memmove(ssd->data + curr_client_index*MAX_CLI_ENUM_SIZE + removed_num_index, ssd->data + curr_client_index*MAX_CLI_ENUM_SIZE + removed_num_index + 1, sizeof(double
+            )*(ssd->client_enum_size[curr_client_index] - removed_num_index - 1));
+            
+            ssd->data[curr_client_index*MAX_CLI_ENUM_SIZE + ssd->client_enum_size[curr_client_index] - 1] = 0.0;
+            
+            ssd->client_enum_size[curr_client_index]--;
+            ssd->seccess_query_count++;
+            sem_post(sem);
+            return 0;
+        }
+    }else{
+        //we have one enum
+        if(ssd->client_enum_size[0] == 0){
+            //we have no data
+            ssd->error_query_count++;
+            sem_post(sem);
+            return 3;
+        }
+        if(ssd->client_enum_size[0] == 1){
+            *num = ssd->data[0];
+            ssd->client_enum_size[0] = 0;
+            ssd->seccess_query_count++;
+            sem_post(sem);
+            return 0;
+        }else{
+            int removed_num_index = rand() % ssd->client_enum_size[0];
+            *num = ssd->data[removed_num_index];
+            
+            memmove(ssd->data + removed_num_index, ssd->data + removed_num_index + 1, sizeof(double)*(ssd->client_enum_size[0] - removed_num_index - 1));
+            
+            ssd->data[ssd->client_enum_size[0] - 1] = 0.0;
+            ssd->client_enum_size[0]--;
+            ssd->seccess_query_count++;
+            sem_post(sem);
+            return 0;
+        }
+    }
     return 0;
 }
 
@@ -305,7 +431,6 @@ int create_task(list_action act, struct sockaddr_in client_addr, double num){
     if (pid > 0)
         return 0;// exit create_task in child;
    
-    
     
     //sendto(server_socket, "GOT", strlen("GOT"),0, (struct sockaddr*)&client_addr, sizeof(client_addr));
     
@@ -348,7 +473,9 @@ int create_task(list_action act, struct sockaddr_in client_addr, double num){
         }
         else{
             //send num
-            rez = sendto(server_socket, "42", strlen("42"),0, (struct sockaddr*)&client_addr, sizeof(client_addr));
+            char msg[MAX_MSG_LEN] = {0};
+            sprintf(msg, "%lf", num);
+            rez = sendto(server_socket, msg, strlen(msg),0, (struct sockaddr*)&client_addr, sizeof(client_addr));
             
             if (rez < 0)
                 lprintf("Child failed to respond\n");
