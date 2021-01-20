@@ -38,6 +38,7 @@ typedef struct
 }config;
 
 //vars
+char version[] = "1.2.0";
 config conf = 
 {
     0,//flags
@@ -127,6 +128,29 @@ int setup(int argc, char *argv[]){//option parcing and env vars fetching
     return 0;
 }
 
+int print_version(){
+    printf("Version:%s\n", version);
+    return 0;
+}
+
+int print_help(){
+    printf("The server stores numbers\n");
+    printf("To add number use:ADD [num]\n");
+    printf("To get number use:GET\n\n");
+    printf("Available options:\n\n");
+    
+    printf("-a [address] - set ip address\n");
+    printf("-p [num] - set port\n");
+    printf("-v - show version\n");
+    printf("-h - show help\n");
+    
+    printf("\nAvailable environment variables:\n");
+    printf("L2ADDR - same as -a\n");
+    printf("L2PORT - same as -p\n");
+    printf("*Environment variables only checked if whort option is not found\n");
+    
+    return 0;
+}
 
 
 int main(int argc, char *argv[])
@@ -141,6 +165,14 @@ int main(int argc, char *argv[])
     if (rez = setup(argc, argv)){
         printf("Setup error(%d)\n",rez);
         exit(EXIT_FAILURE);
+    }
+    
+    if (conff(v))
+        print_version();
+    
+    if(conff(h)){
+        print_help();
+        exit(EXIT_SUCCESS);
     }
     
     

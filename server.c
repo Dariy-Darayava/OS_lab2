@@ -73,6 +73,9 @@ typedef struct server_shared_data{
 }server_shared_data;
 
 /////////////////////////////////////////////////vars
+const char version[] = "1.2.0";
+
+
 int server_socket;
 char verbose_mode = 0;//additional output
 char signal_flags = 0;
@@ -248,6 +251,37 @@ int lprintf(char *msg, ...){
     va_end(vlist);
     free(msgwt);
     return rez;
+}
+
+int print_version(){
+    lprintf("Version:%s\n", version);
+    if (!(conff(d)))
+        printf("Version:%s\n", version);
+    return 0;
+}
+
+int print_help(){
+    printf("The server stores numbers\n");
+    printf("To add number use:ADD [num]\n");
+    printf("To get number use:GET\n\n");
+    printf("Available options:\n\n");
+    
+    printf("-w [num] - imitate work by stopping child for num sec\n");
+    printf("-d - start as daemon\n");
+    printf("-l [path] - set log (/tmp/lab2.log - default file)\n");
+    printf("-a [address] - set ip address\n");
+    printf("-p [num] - set port\n");
+    printf("-v - show version\n");
+    printf("-h - show help\n");
+    
+    printf("\nAvailable environment variables:\n");
+    printf("L2WAIT - same as -w\n");
+    printf("L2LOGFILE - same as -l\n");
+    printf("L2ADDR - same as -a\n");
+    printf("L2PORT - same as -p\n");
+    printf("*Environment variables only checked if whort option is not found\n");
+    
+    return 0;
 }
 
 
@@ -624,6 +658,16 @@ int main(int argc, char *argv[])
         printf("Setup error(%d)\n",rez);
         exit(EXIT_FAILURE);
     }
+    
+    if (conff(v))
+        print_version();
+    
+    if(conff(h)){
+        print_help();
+        exit(EXIT_SUCCESS);
+    }
+        
+    
     
     if (rez = create_and_configure_storage()){
         lprintf("Storage setup error(%d):%s\n",rez, strerror(errno));
