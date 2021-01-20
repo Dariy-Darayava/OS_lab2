@@ -164,6 +164,9 @@ int main(int argc, char *argv[])
     if (rez < 0){ printf("Sendto error\n"); exit(EXIT_FAILURE);}
     
     memset(msg, 0, sizeof(msg));
+    
+    printf("Waiting for server response...\n");
+    
     rez = recvfrom(client_socket, msg, sizeof(msg), 0, NULL, NULL);
     if (rez < 0){ printf("Recvfrom error\n"); exit(EXIT_FAILURE);}
     
