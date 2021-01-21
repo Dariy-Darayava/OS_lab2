@@ -74,7 +74,7 @@ typedef struct server_shared_data{
 }server_shared_data;
 
 /////////////////////////////////////////////////vars
-const char version[] = "1.3.1";
+const char version[] = "1.3.2";
 
 
 int server_socket;
@@ -529,7 +529,7 @@ int create_task(list_action act, struct sockaddr_in client_addr, double num){
             
             if (rez < 0)
                 lprintf("Child failed to respond\n");
-            _Exit(EXIT_FAILURE);
+            _exit(EXIT_FAILURE);
         }
         else{
             //Send OK
@@ -537,7 +537,7 @@ int create_task(list_action act, struct sockaddr_in client_addr, double num){
             
             if (rez < 0)
                 lprintf("Child failed to respond\n");
-            _Exit(EXIT_SUCCESS);
+            _exit(EXIT_SUCCESS);
         }
     }else{
 /////////////// get number;
@@ -549,7 +549,7 @@ int create_task(list_action act, struct sockaddr_in client_addr, double num){
             
             if (rez < 0)
                 lprintf("Child failed to respond\n");
-            _Exit(EXIT_FAILURE);
+            _exit(EXIT_FAILURE);
         }
         else{
             //send num
@@ -559,7 +559,7 @@ int create_task(list_action act, struct sockaddr_in client_addr, double num){
             
             if (rez < 0)
                 lprintf("Child failed to respond\n");
-            _Exit(EXIT_SUCCESS);
+            _exit(EXIT_SUCCESS);
         }
     }
     
@@ -673,10 +673,10 @@ int handle_signals(){
         struct tm work_time_tm = *localtime(&work_time);
     
         sem_wait(sem);
-        lprintf("Showing statistics:\nWorking for:[%02d.%02d.%d %02d:%02d:%02d]\nSuccess requests:%d\nError requests:%d\n", work_time_tm.tm_mday, work_time_tm.tm_mon + 1,  work_time_tm.tm_year, work_time_tm.tm_hour, work_time_tm.tm_min, work_time_tm.tm_sec, ssd->seccess_query_count, ssd->error_query_count);
+        lprintf("Showing statistics:\nWorking for:[%02d.%02d.%d %02d:%02d:%02d]\nSuccess requests:%d\nError requests:%d\n", work_time_tm.tm_mday - 1, work_time_tm.tm_mon ,  work_time_tm.tm_year - 70, work_time_tm.tm_hour - 3, work_time_tm.tm_min, work_time_tm.tm_sec, ssd->seccess_query_count, ssd->error_query_count);
         
         if (!(conff(d)))
-            fprintf(stderr, "Showing statistics:\nWorking for:[%02d.%02d.%d %02d:%02d:%02d]\nSuccess requests:%d\nError requests:%d\n", work_time_tm.tm_mday, work_time_tm.tm_mon + 1,  work_time_tm.tm_year, work_time_tm.tm_hour, work_time_tm.tm_min, work_time_tm.tm_sec, ssd->seccess_query_count, ssd->error_query_count);     
+            fprintf(stderr, "Showing statistics:\nWorking for:[%02d.%02d.%d %02d:%02d:%02d]\nSuccess requests:%d\nError requests:%d\n", work_time_tm.tm_mday - 1, work_time_tm.tm_mon ,  work_time_tm.tm_year - 70, work_time_tm.tm_hour - 3, work_time_tm.tm_min, work_time_tm.tm_sec, ssd->seccess_query_count, ssd->error_query_count);     
         
         sem_post(sem);
     }
